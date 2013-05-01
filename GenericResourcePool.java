@@ -1,5 +1,3 @@
-//package com.bfauble.genericresourcepool;
-
 import java.util.ArrayList;
 import java.util.Random;
 
@@ -8,7 +6,6 @@ import java.util.Random;
  *
  */
 public class GenericResourcePool<R> {
-	static volatile ArrayList<String> stringz = new ArrayList<String>();
 
 	private volatile boolean open;
 
@@ -20,6 +17,10 @@ public class GenericResourcePool<R> {
 		this.unavailableResources = new MyBlockingQueue<R>();
 	}
 
+	/**
+	 * Open pool to allow acquisition of resources.
+	 */
+
 	public synchronized void open() {
 		this.open = true;
 	}
@@ -28,16 +29,32 @@ public class GenericResourcePool<R> {
 		return this.open;
 	}
 
+	/**
+	 * Close pool for acquisition. Block if resources are currently checked
+	 * out of pool. Close once all are returned.
+	 */
+
 	public synchronized void close() {
 		while (this.unavailableResources.size() != 0) {
-
+			//Block until checked out resources are released.
 		}
 		this.open = false;
 	}
 
+	/**
+	 * Close pool for acquisition immediately, whether resources are checked
+	 * out or not.
+	 */
+
 	public synchronized void closeNow() {
 		this.open = false;
 	}
+
+	/**
+	 * Add resource to pool if not currently managed.
+	 * @param resource
+	 * @return boolean successful addition
+	 */
 
 	public synchronized boolean add(R resource) {
 		if (!this.availableResources.contains(resource) && !this.unavailableResources.contains(resource)) {
@@ -47,19 +64,30 @@ public class GenericResourcePool<R> {
 		}
 	}
 
+	/**
+	 * If resource is tracked by pool, remove from available resources once available.
+	 * @param resource
+	 * @return boolean successful removal
+	 */
+
 	public synchronized boolean remove(R resource) {
 		if (this.availableResources.contains(resource) || this.unavailableResources.contains(resource)) {
 			while (this.availableResources.safeRemove(resource)) {
-				//figure out how to block rather than infinite looping.
+				//block until successful removal. 
 			}
 			return true;
 		} else {
 			return false;
 		}
-
 	}
 
-	public synchronized boolean removeNow(R resource) {
+	/**
+	 * If resource is tracked by pool, remove from either available or unavailable queue.
+	 * @param resource
+	 * @return boolean successful removal
+	 */
+
+	public boolean removeNow(R resource) {
 		if (this.availableResources.contains(resource)) {
 			return this.availableResources.safeRemove(resource);
 		} else if (this.unavailableResources.contains(resource)) {
@@ -69,6 +97,12 @@ public class GenericResourcePool<R> {
 		}
 	}
 
+	/**
+	 * If pool is open, attempt to acquire resource until one is available.
+	 * @return R resource or null
+	 * @throws InterruptedException
+	 */
+
 	public R acquire() throws InterruptedException {
 		if (open) {
 			R temp = null;
@@ -76,7 +110,6 @@ public class GenericResourcePool<R> {
 				temp = this.availableResources.safePoll();
 
 			}
-			if (temp == null) System.out.println("uh oh");
 			this.unavailableResources.safeAdd(temp);
 			return temp;
 		} else {
@@ -84,15 +117,31 @@ public class GenericResourcePool<R> {
 		}
 	}
 
-	public synchronized R acquire(long timeout, java.util.concurrent.TimeUnit unit) throws InterruptedException {
+	/**
+	 * If pool is open, attempt to acquire resource if available for specified amount of time
+	 * interrupt on time up and return null.
+	 * @param timeout
+	 * @param unit
+	 * @return R or null
+	 * @throws InterruptedException
+	 */
+
+	public R acquire(long timeout, java.util.concurrent.TimeUnit unit) throws InterruptedException {
 		if (open) {
 			R temp = this.availableResources.safePoll(timeout, unit);
-			this.unavailableResources.safeAdd(temp);
+			if (temp != null) {
+				this.unavailableResources.safeAdd(temp);
+			}
 			return temp;
 		} else {
 			return null;
 		}
 	}
+
+	/**
+	 * if resource is tracked by pool, move from unavailable to available queue.
+	 * @param resource
+	 */
 
 	public synchronized void release(R resource) {
 		if (this.unavailableResources.safeRemove(resource)) {
@@ -100,18 +149,29 @@ public class GenericResourcePool<R> {
 		}
 	}
 
+	/**
+	 * Helper method for testing to view amount of available resources
+	 * @return int available resources
+	 */
 	public synchronized int availableResourceCount() {
 		return this.availableResources.size();
 	}
+
+	/**
+	 * Helper method for testing to view sizes and content of queues.
+	 * @return int total resources
+	 */
 
 	public synchronized int totalResourceCount() {
 		return this.availableResources.size() + this.unavailableResources.size();
 	}
 
-	public void read() {
-		System.out.println(this.availableResources.toString());
-		System.out.println(this.unavailableResources.toString());
-	}
+	/**
+	 * Below is used as brute force testing attempting to replicate fringe cases of 
+	 * multiple threads trying to access the same methods of the queue which could
+	 * cause race case and cause program to hang. ie. remove() and release(), acquire()
+	 * and remove().
+	 */
 
 	public static void main(String[] args) throws InterruptedException {
 		final GenericResourcePool<String> pool = new GenericResourcePool<String>();
@@ -119,12 +179,22 @@ public class GenericResourcePool<R> {
 		pool.open();
 		pool.add(new String("bad1"));
 		pool.add(new String("bad2"));
-		stringz.add(pool.acquire());
-		stringz.add(pool.acquire());
+		strings.add(pool.acquire());
+		strings.add(pool.acquire());
 
 		new java.util.Timer().schedule(new java.util.TimerTask() {
 			@Override
 			public void run() {
+				new Thread("open and close") {
+					public void run() {
+						while (true) {
+							for (int i = 1;; i++) {
+								if (i % 2 == 0) pool.closeNow();
+								else pool.open();
+							}
+						}
+					}
+				}.start();
 				for (int i = 0; i < 5; i++) {
 					new Thread("good producer " + String.valueOf(i)) {
 						public void run() {
@@ -134,29 +204,23 @@ public class GenericResourcePool<R> {
 								} catch (Exception e) {
 									e.printStackTrace();
 								}
-
 							}
-
 						}
 					}.start();
 				}
-				for (int i = 0; i < 1000; i++) {
-
+				for (int i = 0; i < 2000; i++) {
 					new Thread("badconsumer " + String.valueOf(i)) {
 						public void run() {
 							while (true) {
 								try {
-									for (int i = 1; i < 10000; i++) {
-										if (i % 2 == 0) pool.release(stringz.get(1));
-										else pool.remove(stringz.get(0));
-										//System.out.println(t_count++);
+									for (int i = 1; i < 5000; i++) {
+										if (i % 2 == 0) pool.release(strings.get(1));
+										else pool.remove(strings.get(0));
 									}
-									int i = 1;
 								} catch (Exception e) {
 									e.printStackTrace();
 								}
 							}
-
 						}
 					}.start();
 					new Thread("producer " + String.valueOf(i)) {
@@ -199,7 +263,6 @@ public class GenericResourcePool<R> {
 										try {
 											strings.add(pool.acquire());
 										} catch (InterruptedException | NullPointerException e) {
-											// TODO Auto-generated catch block
 											System.out.println("failed acquire");
 										}
 										i--;
@@ -222,9 +285,8 @@ public class GenericResourcePool<R> {
 				}
 			}
 		}, 10000);
-
 	}
 
-	//transaction count for brute force threads
-	static volatile long t_count;
+	static volatile ArrayList<String> strings = new ArrayList<String>();
+
 }

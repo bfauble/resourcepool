@@ -1,12 +1,8 @@
-/**
- * 
- */
-//package com.bfauble.genericresourcepool;
-
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import org.junit.After;
+import java.util.concurrent.TimeUnit;
+
 import org.junit.Before;
 import org.junit.Test;
 
@@ -25,17 +21,8 @@ public class GenericResourcePoolTest {
 	public void setUp() throws Exception {
 		testPool1 = new GenericResourcePool<String>();
 		testPool2 = new GenericResourcePool<String>();
-		s1 = new String("s1");
-		s2 = new String("s2");
-		s1 = "test1";
-		s2 = "test2";
-	}
-
-	/**
-	 * @throws java.lang.Exception
-	 */
-	@After
-	public void tearDown() throws Exception {
+		s1 = new String("test1");
+		s2 = new String("test2");
 	}
 
 	/**
@@ -155,6 +142,12 @@ public class GenericResourcePoolTest {
 	 */
 	@Test
 	public void testRemove() {
+		String temp = new String("test");
+		assertTrue(testPool1.add(temp));
+		assertTrue(testPool1.totalResourceCount() == 1);
+		assertTrue(testPool1.remove(temp));
+		assertFalse(testPool1.remove("not tracked"));
+		assertTrue(testPool1.totalResourceCount() == 0);
 
 	}
 
@@ -163,10 +156,19 @@ public class GenericResourcePoolTest {
 	 * 
 	 * remove resource from pool from checked out structure.
 	 * successful remove returns true, otherwise false.
+	 * @throws InterruptedException 
 	 * 
 	 */
 	@Test
-	public void testRemoveNow() {
+	public void testRemoveNow() throws InterruptedException {
+		testPool1.open();
+		String temp = new String("test");
+		assertTrue(testPool1.add(temp));
+		assertTrue(testPool1.totalResourceCount() == 1);
+		@SuppressWarnings("unused")
+		String temp2 = testPool1.acquire();
+		assertTrue(testPool1.removeNow(temp));
+		assertTrue(testPool1.totalResourceCount() == 0);
 
 	}
 
@@ -210,9 +212,16 @@ public class GenericResourcePoolTest {
 	 * Test method for {@link com.bfauble.genericresourcepool.GenericResourcePool#acquire(long, java.util.concurrent.TimeUnit)}.
 	 * 
 	 * attempt to acquire object for specified time, then return null if no resource returned.
+	 * @throws InterruptedException 
 	 */
 	@Test
-	public void testAcquireLongTimeUnit() {
+	public void testAcquireLongTimeUnit() throws InterruptedException {
+		testPool1.open();
+		@SuppressWarnings("unused")
+		String temp = testPool1.acquire(1, TimeUnit.SECONDS);
+		testPool1.add(new String("now there's a string to acquire"));
+		String temp2 = testPool1.acquire(1, TimeUnit.SECONDS);
+		assertTrue(temp2 != null);
 
 	}
 
@@ -236,5 +245,4 @@ public class GenericResourcePoolTest {
 		assertTrue(testPool1.availableResourceCount() == 1);
 
 	}
-
 }
